@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pycache/
+.ipynb_checkpoints/
+.env
+*.pyc
+build/
+dist/
+logs/
+clickhouse/data/
+clickhouse/logs/
+data/raw/*.parquet

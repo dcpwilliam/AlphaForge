@@ -1,3 +1,29 @@
+Metadata-Version: 2.4
+Name: alphaforge-quant
+Version: 0.1.0
+Summary: Local quant research project with ClickHouse + Jupyter
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: clickhouse-connect>=0.8.0
+Requires-Dist: jupyterlab>=4.2.0
+Requires-Dist: numpy>=1.26.0
+Requires-Dist: pandas>=2.2.0
+Requires-Dist: pyarrow>=16.0.0
+Requires-Dist: scikit-learn>=1.5.0
+Requires-Dist: scipy>=1.13.0
+Requires-Dist: seaborn>=0.13.0
+Requires-Dist: statsmodels>=0.14.0
+Requires-Dist: matplotlib>=3.8.0
+Requires-Dist: plotly>=5.24.0
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: streamlit>=1.39.0
+Requires-Dist: tqdm>=4.66.0
+Requires-Dist: urllib3<2
+Requires-Dist: yfinance>=0.2.54
+Provides-Extra: dev
+Requires-Dist: ipykernel>=6.29.0; extra == "dev"
+Requires-Dist: ruff>=0.6.0; extra == "dev"
+
 # AlphaForge Quant Research (ClickHouse + Python + Jupyter)
 
 这个工程用于本地量化研究场景，提供：

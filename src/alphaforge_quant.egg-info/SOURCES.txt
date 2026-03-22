@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/alphaforge_quant.egg-info/PKG-INFO
+src/alphaforge_quant.egg-info/SOURCES.txt
+src/alphaforge_quant.egg-info/dependency_links.txt
+src/alphaforge_quant.egg-info/requires.txt
+src/alphaforge_quant.egg-info/top_level.txt
+src/quant_research/__init__.py
+src/quant_research/config.py
+src/quant_research/db.py
+src/quant_research/factors.py
+src/quant_research/market_data.py
+src/quant_research/strategies.py
+src/quant_research/universe.py

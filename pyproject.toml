@@ -1,0 +1,40 @@
+[project]
+name = "alphaforge-quant"
+version = "0.1.0"
+description = "Local quant research project with ClickHouse + Jupyter"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "clickhouse-connect>=0.8.0",
+  "jupyterlab>=4.2.0",
+  "numpy>=1.26.0",
+  "pandas>=2.2.0",
+  "pyarrow>=16.0.0",
+  "scikit-learn>=1.5.0",
+  "scipy>=1.13.0",
+  "seaborn>=0.13.0",
+  "statsmodels>=0.14.0",
+  "matplotlib>=3.8.0",
+  "plotly>=5.24.0",
+  "python-dotenv>=1.0.1",
+  "streamlit>=1.39.0",
+  "tqdm>=4.66.0",
+  "urllib3<2",
+  "yfinance>=0.2.54"
+]
+
+[project.optional-dependencies]
+dev = [
+  "ipykernel>=6.29.0",
+  "ruff>=0.6.0"
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
