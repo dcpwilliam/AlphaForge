@@ -36,7 +36,7 @@ notebook:
 	. .venv/bin/activate && PYTHONPATH=src jupyter lab
 
 web:
-	. .venv/bin/activate && PYTHONPATH=src streamlit run web/app.py
+	. .venv/bin/activate && PYTHONPATH=src streamlit run web/app.py --server.address 127.0.0.1 --server.port 8501
 
 test-conn:
 	. .venv/bin/activate && PYTHONPATH=src python -c "from quant_research.db import query_df; print(query_df('select version() as v'))"

@@ -89,16 +89,27 @@ make schedule-uninstall
 make notebook
 ```
 
-## 7. 启动 Web 看板
+## 7. 启动 Web 看板（Python / Streamlit）
 
 ```bash
 make web
 ```
 
-默认启动 Streamlit 页面，可用于：
-- 查看策略列表、策略内容与交易逻辑
-- 运行单票/组合回测，查看交易记录与累计收益曲线
-- 浏览 ClickHouse 中的股票数据与已保存交易信号
+访问地址：
+- Web: `http://127.0.0.1:8501`
+
+说明：
+- Web 工程入口：`web/app.py`
+- 用户/资产/购买记录长期保存到 `data/app_store.db`
+- Agent 配置来自根目录 `agent.config`，默认 vendor 为 `openai`
+- 用户模块使用 OIDC（Authing），登录后从 `/oidc/me` 拉取用户信息（如资金、策略权限ID、因子权限ID）
+
+OIDC 环境变量（建议放到 `.env`）：
+```bash
+OIDC_CLIENT_ID=69ba3eccdb057f1398c742c5
+OIDC_CLIENT_SECRET=你的 App Secret
+OIDC_REDIRECT_URI=http://127.0.0.1:8501
+```
 
 Notebook 说明：
 - `notebooks/01_data_import.ipynb`: 数据检查 + 导入验证

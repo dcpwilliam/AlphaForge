@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 from typing import Callable
 
@@ -23,6 +24,120 @@ def _rolling_slope(arr: np.ndarray) -> float:
     x = np.arange(len(arr))
     k, _ = np.polyfit(x, arr, 1)
     return float(k)
+
+
+_DISALLOWED_CALLS = {
+    "eval",
+    "exec",
+    "open",
+    "__import__",
+    "compile",
+    "input",
+}
+
+_DISALLOWED_ATTR_CALLS = {
+    ("os", "system"),
+    ("os", "popen"),
+    ("subprocess", "run"),
+    ("subprocess", "Popen"),
+}
+
+_ALLOWED_NAME_CALLS = {
+    "init",
+    "handlebar",
+    "sell_open",
+    "buy_open",
+    "buy_close_tdayfirst",
+    "sell_close_tdayfirst",
+    "timetag_to_datetime",
+    "print",
+    "int",
+    "float",
+    "len",
+    "range",
+    "abs",
+}
+
+_ALLOWED_IMPORTS = {"numpy"}
+
+
+def validate_context_python_strategy(code: str) -> dict:
+    report = {
+        "syntax_ok": False,
+        "has_init": False,
+        "has_handlebar": False,
+        "illegal_calls": [],
+        "illegal_imports": [],
+        "errors": [],
+    }
+    try:
+        tree = ast.parse(code)
+        report["syntax_ok"] = True
+    except SyntaxError as exc:
+        report["errors"].append(f"SyntaxError: line {exc.lineno}, col {exc.offset}, {exc.msg}")
+        return report
+
+    fn_defs = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+    report["has_init"] = "init" in fn_defs
+    report["has_handlebar"] = "handlebar" in fn_defs
+    if not report["has_init"]:
+        report["errors"].append("缺少函数: init(ContextInfo)")
+    if not report["has_handlebar"]:
+        report["errors"].append("缺少函数: handlebar(ContextInfo)")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root not in _ALLOWED_IMPORTS:
+                    report["illegal_imports"].append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            root = (node.module or "").split(".")[0]
+            if root not in _ALLOWED_IMPORTS:
+                report["illegal_imports"].append(node.module or "")
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                fn = node.func.id
+                if fn in _DISALLOWED_CALLS:
+                    report["illegal_calls"].append(fn)
+            elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                owner = node.func.value.id
+                attr = node.func.attr
+                if (owner, attr) in _DISALLOWED_ATTR_CALLS:
+                    report["illegal_calls"].append(f"{owner}.{attr}")
+
+    # 仅允许 ContextInfo 的常见方法调用，其他对象方法默认放行（例如 numpy/pandas）
+    allowed_ctx_methods = {
+        "set_universe",
+        "get_bar_timetag",
+        "get_market_data",
+        "paint",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if isinstance(node.func.value, ast.Name) and node.func.value.id == "ContextInfo":
+                if node.func.attr not in allowed_ctx_methods:
+                    report["illegal_calls"].append(f"ContextInfo.{node.func.attr}")
+
+    # 附加 name call 合法性检查（不过于苛刻，未识别的 Name 调用给提示）
+    unknown_name_calls: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            fn = node.func.id
+            if fn not in _ALLOWED_NAME_CALLS and fn not in fn_defs and fn not in {"np"}:
+                # 对 numpy 别名函数调用通过 Attribute 识别，不在这里处理
+                if fn not in _DISALLOWED_CALLS:
+                    unknown_name_calls.add(fn)
+    if unknown_name_calls:
+        report["errors"].append(f"发现未识别函数调用: {sorted(unknown_name_calls)}")
+
+    if report["illegal_imports"]:
+        report["errors"].append(f"非法 import: {sorted(set(report['illegal_imports']))}")
+    if report["illegal_calls"]:
+        report["errors"].append(f"非法调用: {sorted(set(report['illegal_calls']))}")
+
+    report["valid"] = report["syntax_ok"] and report["has_init"] and report["has_handlebar"] and not report["illegal_calls"] and not report["illegal_imports"]
+    return report
 
 
 def _dual_ma_signal(df: pd.DataFrame, params: dict) -> pd.Series:
@@ -441,3 +556,183 @@ def run_enhanced_breakout_portfolio_backtest(
     # 日志表不作为主返回，挂到 attrs 便于 notebook 取用
     equity.attrs["logs"] = log_df
     return equity, trade_df, metrics
+
+
+def run_pair_spread_bollinger_backtest(
+    bars: pd.DataFrame,
+    params: dict | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """
+    配对价差布林回测（非实盘）:
+    - spread = price_a - price_b
+    - 过去N窗口均值 ± k*std 为上下轨
+    - spread > up: 做空价差（A空/B多）
+    - spread < down: 做多价差（A多/B空）
+    - spread 回归轨道内平仓
+    """
+    cfg = {
+        "symbol_a": "rb00.SF",
+        "symbol_b": "hc00.SF",
+        "window": 30,
+        "band_k": 0.5,
+        "initial_capital": 1_000_000.0,
+        "trade_notional": 200_000.0,
+        "slippage": 0.0005,
+        "fee_rate": 0.0003,
+    }
+    if params:
+        cfg.update(params)
+
+    required_cols = {"trade_date", "symbol", "close"}
+    missing = required_cols - set(bars.columns)
+    if missing:
+        raise ValueError(f"bars missing required columns: {missing}")
+
+    symbol_a = str(cfg["symbol_a"])
+    symbol_b = str(cfg["symbol_b"])
+    df = bars.copy()
+    df["trade_date"] = pd.to_datetime(df["trade_date"])
+    df = df[df["symbol"].isin([symbol_a, symbol_b])]
+    px = df.pivot(index="trade_date", columns="symbol", values="close").sort_index().ffill()
+    if symbol_a not in px.columns or symbol_b not in px.columns:
+        raise ValueError(f"bars 中缺少标的: {symbol_a} 或 {symbol_b}")
+
+    spread = px[symbol_a] - px[symbol_b]
+    window = int(cfg["window"])
+    k = float(cfg["band_k"])
+    ma = spread.rolling(window).mean()
+    sd = spread.rolling(window).std()
+    up = ma + k * sd
+    down = ma - k * sd
+
+    cash = float(cfg["initial_capital"])
+    pos_a = 0  # >0 多A, <0 空A
+    pos_b = 0  # >0 多B, <0 空B
+    state = "flat"  # flat/long_spread/short_spread
+    slippage = float(cfg["slippage"])
+    fee_rate = float(cfg["fee_rate"])
+    target_notional = float(cfg["trade_notional"])
+
+    trades: list[dict] = []
+    rows: list[dict] = []
+
+    for i, dt in enumerate(px.index):
+        pa = float(px.at[dt, symbol_a])
+        pb = float(px.at[dt, symbol_b])
+        s = float(spread.iat[i]) if pd.notna(spread.iat[i]) else np.nan
+        u = float(up.iat[i]) if pd.notna(up.iat[i]) else np.nan
+        d = float(down.iat[i]) if pd.notna(down.iat[i]) else np.nan
+
+        # 每日盯市
+        position_value = pos_a * pa + pos_b * pb
+        equity = cash + position_value
+
+        rows.append(
+            {
+                "trade_date": dt,
+                "price_a": pa,
+                "price_b": pb,
+                "spread": s,
+                "up": u,
+                "down": d,
+                "state": state,
+                "pos_a": pos_a,
+                "pos_b": pos_b,
+                "cash": cash,
+                "equity": equity,
+            }
+        )
+
+        if i < window or np.isnan(s) or np.isnan(u) or np.isnan(d):
+            continue
+
+        qty_a = max(int(target_notional / max(pa, 1e-12)), 1)
+        qty_b = max(int(target_notional / max(pb, 1e-12)), 1)
+
+        def _trade(symbol: str, side: str, qty: int, price: float):
+            nonlocal cash
+            px_exec = price * (1 + slippage if side == "BUY" else 1 - slippage)
+            amt = px_exec * qty
+            fee = amt * fee_rate
+            if side == "BUY":
+                cash -= amt + fee
+            else:
+                cash += amt - fee
+            trades.append(
+                {
+                    "trade_date": dt,
+                    "symbol": symbol,
+                    "side": side,
+                    "qty": qty,
+                    "price": px_exec,
+                    "fee": fee,
+                    "state": state,
+                }
+            )
+
+        # 先平后开，保持与示例逻辑一致
+        if state == "short_spread":
+            if s <= u:
+                # 平空价差: A买平 / B卖平
+                _trade(symbol_a, "BUY", abs(pos_a), pa)
+                _trade(symbol_b, "SELL", abs(pos_b), pb)
+                pos_a, pos_b = 0, 0
+                state = "flat"
+            if s < d and state == "flat":
+                # 反手做多价差
+                _trade(symbol_a, "BUY", qty_a, pa)
+                _trade(symbol_b, "SELL", qty_b, pb)
+                pos_a, pos_b = qty_a, -qty_b
+                state = "long_spread"
+
+        elif state == "long_spread":
+            if s >= d:
+                # 平多价差: A卖平 / B买平
+                _trade(symbol_a, "SELL", abs(pos_a), pa)
+                _trade(symbol_b, "BUY", abs(pos_b), pb)
+                pos_a, pos_b = 0, 0
+                state = "flat"
+            if s > u and state == "flat":
+                # 反手做空价差
+                _trade(symbol_a, "SELL", qty_a, pa)
+                _trade(symbol_b, "BUY", qty_b, pb)
+                pos_a, pos_b = -qty_a, qty_b
+                state = "short_spread"
+
+        else:  # flat
+            if s > u:
+                _trade(symbol_a, "SELL", qty_a, pa)
+                _trade(symbol_b, "BUY", qty_b, pb)
+                pos_a, pos_b = -qty_a, qty_b
+                state = "short_spread"
+            elif s < d:
+                _trade(symbol_a, "BUY", qty_a, pa)
+                _trade(symbol_b, "SELL", qty_b, pb)
+                pos_a, pos_b = qty_a, -qty_b
+                state = "long_spread"
+
+    curve = pd.DataFrame(rows).sort_values("trade_date")
+    curve["strategy_return"] = curve["equity"].pct_change().fillna(0.0)
+    curve["strategy_curve"] = curve["equity"] / float(cfg["initial_capital"])
+    curve["strategy_cum_return"] = curve["strategy_curve"] - 1
+
+    bench = (px[symbol_a].pct_change(fill_method=None).fillna(0.0) + px[symbol_b].pct_change(fill_method=None).fillna(0.0)) / 2
+    curve["benchmark_return"] = bench.reindex(curve["trade_date"]).fillna(0.0).values
+    curve["benchmark_curve"] = (1 + curve["benchmark_return"]).cumprod()
+    curve["benchmark_cum_return"] = curve["benchmark_curve"] - 1
+
+    trade_df = pd.DataFrame(trades)
+    metrics = _calc_curve_metrics(curve["equity"])
+    metrics.update(
+        {
+            "strategy_name": "pair_spread_bollinger",
+            "initial_capital": float(cfg["initial_capital"]),
+            "final_amount": float(curve["equity"].iloc[-1]) if not curve.empty else float(cfg["initial_capital"]),
+            "num_trades": int(len(trades)),
+            "symbol_a": symbol_a,
+            "symbol_b": symbol_b,
+            "window": window,
+            "band_k": k,
+        }
+    )
+    return curve, trade_df, metrics

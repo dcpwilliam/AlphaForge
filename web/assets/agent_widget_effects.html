@@ -1,0 +1,85 @@
+<style>
+:root {
+    --af-ball-size: 56px;
+    --af-edge-gap: 24px;
+    --af-pop-gap: 10px;
+}
+div[data-testid="stVerticalBlock"]:has(#af-agent-fab-anchor) {
+    position: fixed !important;
+    right: var(--af-edge-gap, 24px) !important;
+    bottom: var(--af-edge-gap, 24px) !important;
+    z-index: 10020 !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+}
+div[data-testid="stVerticalBlock"]:has(#af-agent-fab-anchor) div[data-testid="stButton"] > button {
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    aspect-ratio: 1 / 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    overflow: hidden !important;
+    background: linear-gradient(135deg, #0ea5e9, #2563eb, #7c3aed, #14b8a6);
+    background-size: 300% 300%;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    font-size: 22px !important;
+    box-shadow: 0 10px 28px rgba(17, 24, 39, 0.35);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    animation: af-gradient-flow 6s ease infinite, af-breathe 2.4s ease-in-out infinite;
+}
+div[data-testid="stVerticalBlock"]:has(#af-agent-fab-anchor) div[data-testid="stButton"] > button:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 14px 32px rgba(17, 24, 39, 0.45);
+}
+
+div[data-testid="stVerticalBlock"]:has(#af-agent-panel-anchor) {
+    position: fixed !important;
+    right: var(--af-edge-gap, 24px) !important;
+    bottom: calc(var(--af-edge-gap, 24px) + var(--af-ball-size, 56px) + var(--af-pop-gap, 10px)) !important;
+    width: min(420px, calc(100vw - 32px)) !important;
+    max-height: min(72vh, 700px) !important;
+    overflow: auto !important;
+    padding: 14px 12px 12px 12px !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(148, 163, 184, 0.35) !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    box-shadow: 0 12px 38px rgba(15, 23, 42, 0.24) !important;
+    backdrop-filter: blur(6px) !important;
+    z-index: 10010 !important;
+}
+
+@media (max-width: 900px) {
+    div[data-testid="stVerticalBlock"]:has(#af-agent-panel-anchor) {
+        width: calc(100vw - 20px) !important;
+        right: 10px !important;
+        bottom: calc(var(--af-edge-gap, 24px) + var(--af-ball-size, 56px) + 8px) !important;
+        max-height: 68vh !important;
+    }
+}
+
+@keyframes af-gradient-flow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+@keyframes af-breathe {
+    0%, 100% {
+        box-shadow: 0 10px 26px rgba(17, 24, 39, 0.32), 0 0 0 0 rgba(59, 130, 246, 0.45);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 14px 34px rgba(17, 24, 39, 0.45), 0 0 0 10px rgba(59, 130, 246, 0.08);
+        transform: scale(1.04);
+    }
+}
+</style>
